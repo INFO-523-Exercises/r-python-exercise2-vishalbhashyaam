@@ -998,7 +998,7 @@ base <- data.frame(word = names(freq), freq = freq)
 
 `png()` opens a new device "png' to output the graph to a local file:
 
-```{r}
+```{r, warning=FALSE}
 png(file = "wordCloud.png", width = 1000, height= 700, bg= "grey50")
 
 wordcloud(base$word, base$freq, col = terrain.colors(length(base$word), alpha = 0.9), random.order = FALSE, rot.per= 0.3, scale = c(1,1))
