@@ -4,3 +4,795 @@ author: "VISHAL BHASHYAAM"
 format: html
 editor: visual
 ---
+
+# Data Preprocessing in R
+
+# **Goal**
+
+Practice basic R commands/methods for descriptive data analysis.
+
+## Installing required packages
+
+```{r}
+# Running this to see whether the package is installed or not 
+if (!require(pacman))
+  installed.packages("pacman")
+```
+
+```{r}
+library(pacman)
+
+p_load(DBI, # DBI databases)
+       dlookr,
+       here, # Reproducible/ Standard Directories
+       janitor,
+       RMySQL, # Utilizing MySQL drivers
+       tidymodels, # Tidyverse format modeling (eg. lm())
+       tidyverse, # Data wrangling, manipulation and visualization
+       qqplotr
+       )
+```
+
+## Loading data
+
+### CSV Files (.csv)
+
+```{r}
+# Checking the working directory and loading the data set
+getwd()
+data <- read_csv(".//data//x.csv")
+
+# How the dataset looks like
+data |> glimpse()
+```
+
+## Tab seperated values (x.tsv)
+
+```{r}
+data <- read_delim(".//data//x.tsv")
+# Data information
+data |> 
+  glimpse()
+```
+
+## Importing data from MySQL dataset
+
+Connecting to a database in MYSQL
+
+```{r}
+drv <- dbDriver("MySQL") # Obtaining drivers for MySQL
+```
+
+## Using `dplyr` instead
+
+```{r}
+if(!require(dbplyr))
+install.packages("dbplyr") # installing library
+```
+
+## Obtain a connection - Skipping the Database section for now.
+
+```{r}
+
+#con <- src_mysql("etcsite_charaparser", user = "termsuser", password = #"termspassword", host = "localhost")
+
+```
+
+## Data Cleaning
+
+## Wide vs Long format
+
+The wide format uses the values (`Math`, `English`) of variable `Subjects` as variables.
+
+```{r}
+wide <- read_delim(".//data//wide.txt" , delim=" ", skip=1, col_names= c("Name", "Maths", "English", "Degree_Year"))
+# Retrieving full column specification
+spec(wide)
+cols_condense(wide)
+
+
+```
+
+The long format should have `Name`, `Subject`, and `Grade` as variables (i.e., columns).
+
+```{r}
+long <- wide |> 
+  pivot_longer(cols= c(Maths,English),
+               names_to= "Subject",
+               values_to="Grade")
+
+long
+```
+
+## Long to wide, using `spread()`
+
+```{r}
+wide <- long %>% 
+  pivot_wider(names_from= Subject, values_from= Grade)
+
+wide
+```
+
+## Split a column into multiple columns
+
+Split `Degree_Year` to `Degree` and `Year`
+
+```{r}
+clean <- long %>%
+  separate(Degree_Year, c("Degree", "Year"), sep="_")
+
+clean
+```
+
+## Handling data/time and time zones
+
+```{r}
+if(!require(lubridate))
+install.packages("lubridate")
+library(lubridate)
+```
+
+Convert dates of variance formats into one format:
+
+```{r}
+mixed.dates <- c(20140123, "2019-12-12","2009/5/1","measured on 2002-12-06", "2018-7/16")
+
+clean.dates <- ymd(mixed.dates)# convert to year-month-day format
+clean.dates
+```
+
+Extract day, week, month, year info from dates :
+
+```{r}
+data.frame(Dates= clean.dates, WeekDay = wday(clean.dates), nWeekDay= wday(clean.dates, label= TRUE),Year=year(clean.dates), Month=month(clean.dates, label= TRUE))
+```
+
+### Time zone :
+
+```{r}
+date.time <- ymd_hms("20190203 04:00:03", tz= "Asia/Calcutta")
+```
+
+### Convert to Phoenix,AZ time:
+
+```{r}
+with_tz(date.time, tz="America/Phoenix")
+```
+
+### Change the timezone for a time:
+
+```{r}
+force_tz(date.time,"Turkey")
+```
+
+### Available Time Zones
+
+```{r}
+OlsonNames()
+```
+
+## String Proceesing
+
+Common needs: `stringr` package
+
+Advanced needs: `stringi` package
+
+```{r}
+library(dplyr)
+library(stringr)
+library(readr)
+```
+
+Fetching data from a URL, forming the URL using string functions:
+
+```{r}
+uci.repo <-"http://archive.ics.uci.edu/ml/machine-learning-databases/"
+dataset <- "audiology/audiology.standardized"
+```
+
+### `str_c` : string concatenation:
+
+```{r}
+dataF <- str_c(uci.repo, dataset, ".data")
+namesF <- str_c(uci.repo, dataset, ".names")
+dataF
+```
+
+### Read the data file:
+
+```{r}
+data <- read_csv(url(dataF), col_names =FALSE, na="?")
+```
+
+```{r}
+dim(data)
+```
+
+Read the name file line by line, put the lines in a vector:
+
+```{r}
+lines <- read_lines(url(namesF))
+
+lines |> head()
+```
+
+See the content of lines and see the column names start on line 67, ends on line 135. Then, get column name lines and clean up to get column names:
+
+```{r}
+names <- lines[67:135]
+names
+```
+
+A name line consist two parts: One with valid values like the value before `:` which is the name.
+
+```{r}
+names <- str_split_fixed(names, ":",2) # split on regular expression pattern ":", this function returns a matrix 
+names
+
+```
+
+Picking the first Column, which contains the name:
+
+```{r}
+names <- names[,1]
+names
+```
+
+Cleaning up the names: trim, spaces, remove `()` :
+
+```{r}
+names <- str_trim(names) |> str_replace_all("\\(|\\)", "") # we use a pipe, and another reg exp  "\\(|\\)", \\ is the escape.
+names
+```
+
+Put the columns to the data :
+
+Last two columns in the data are identifier so we use the first 69 columns.
+
+```{r}
+colnames(data)[1:69] <- names 
+data
+```
+
+Renaming the last two columns:
+
+```{r}
+colnames(data)[70:71] <- c("id", "class")
+(data[70:71])
+(data)
+```
+
+## Dealing with unknown values
+
+Remove observations or columns with many NA's
+
+```{r}
+library(dplyr)
+
+missing.value.rows <- data |>
+  filter(!complete.cases(data))
+
+missing.value.rows
+```
+
+The dataset has 196 rows of NA out of 200,
+
+Applying a function to find NA's in a row.
+
+```{r}
+data <- data %>%
+  mutate(na_count = rowSums(is.na(data)))
+data
+```
+
+Maximum missing values in a row is 7, out if 69 dimensions, so they are not too bad.
+
+Examine columns: how many NA's in each variable/column:
+
+```{r}
+data |> 
+  summarize(across(everything(), ~sum(is.na(.)), .names = "na_{.col}")) %>% 
+ 
+  pivot_longer(everything(), names_to= "column_name", values_to = "na_count") %>%
+  arrange(na_count)
+```
+
+`bser` variable has 196 NA's . if this variable is considered not useful, given some domain knowledge, we can remove it from the data. From View, I can see bser is the 8th column:
+
+```{r}
+data.bser.removed <- data %>% 
+  select(-8) %>%
+  summarise(across(everything(), ~sum(is.na(.)), .names= "na_{.col}"))
+data.bser.removed 
+```
+
+`matches` function can help find the index of a `colname` given its name:
+
+```{r,error=TRUE}
+data <- data %>%
+  select(-matches("bser"))
+
+data
+```
+
+### **Mistaken characters**
+
+Because R decides the data type based on what is given, sometimes, R's decision may not be what you meant. In the example below, because of a missing value `?`, R makes all other values in a vector 'character'. Parse_integer can be used to fix this problem. 
+
+```{r}
+mistaken<- c(2,3,4,"?")
+class(mistaken)
+```
+
+```{r}
+fixed <- parse_integer(mistaken, na="?")
+fixed 
+```
+
+```{r}
+class(fixed)
+```
+
+## Filling unknowns with most frequent values
+
+Should document all modifications :
+
+```{r}
+if(!require(DMwR2))
+  install.packages("DMwR2")
+data(algae, package= "DMwR2")
+algae[48,]
+```
+
+`mxPH` is unknown. Shall we fill in with mean, median or something else?
+
+```{r}
+# plot a QQ plot of mxPH
+if(!require(car))
+  install.packages("car")
+library(car)
+ggplot(algae, aes(sample= mxPH)) +
+  geom_qq_band() +
+  stat_qq_point() +
+  stat_qq_line(color = "red", method="identify", intercept= -2, slope=1) +
+  ggtitle("Normal QQ plot mxPH")
+```
+
+The line fits the data pretty well so `mxPH` is normal , use mean to fill the unknown.
+
+```{r}
+algae <- algae |>
+  mutate(mxPH = ifelse(row_number() == 48, mean(mxPH, na.rm= TRUE),mxPH))
+algae
+```
+
+What about attribute `Chla` :
+
+```{r}
+ggplot(algae, aes(sample= Chla)) +
+  geom_qq_band()+
+  stat_qq_point()+
+  stat_qq_line(color = "red", method= "identity", intercept = -2, slope =1) +
+  ggtitle("Normal QQ plot of Chla")
+```
+
+```{r}
+median(algae$Chla, na.rm = TRUE)
+```
+
+```{r}
+mean(algae$Chla, na.rm= TRUE)
+```
+
+Mean is not the representative value for `Chla` . Will use median to fill all missing values in this attribute, instead of doing it one value at a time:
+
+```{r}
+algae <- algae |>
+  mutate(Chla = if_else(is.na(Chla), median(Chla, na.rm= TRUE), Chla))
+algae
+```
+
+## Filling unknowns using linear regression
+
+This method is used when two variables are highly correlated. One value of variable A can be used to predict the value of variable B using the linear regression model.
+
+Checking what variables are highly correlated,
+
+```{r}
+algae_numeric <- algae[,4:18] %>%
+  drop_na() # Removes rows with NA values
+cor_matrix <- algae_numeric |> correlate() |> plot()
+```
+
+```{r}
+cor_matrix
+```
+
+Finding the linear model between `P04` and `oP04`
+
+```{r}
+algae <- algae %>%
+  filter(rowSums(is.na(.)) / ncol(.) < 0.2) # this is a method provided that selects the observations with 20% or move values as NAs
+
+m = lm(PO4 ~ oPO4, data = algae)
+lm(formula= PO4 ~ oPO4, data = algae) 
+```
+
+```{r}
+m |>
+  summary()
+```
+
+```{r}
+m |>
+  summary() |>
+  tidy()
+```
+
+tidy is from the tidymodels metapackage. This creates a more readable output for linear regressions
+
+If a good model, coefficients should all be significant (reject Ho coefficience is 0), Adjusted R-squared close to 1 (0.8 is very good).
+
+F-statistics p-value should be less than the significant level (typically 0.05).
+
+While R-squared provides an estimate of the strength of the relationship between your model and the response variable, it does not provide a formal hypothesis test for this relationship.
+
+The F-test determines whether this relationship is statistically significant.
+
+This model is good. We can also assess the fitness of the model with fitted line plot (should show the good fit), residual plot (should show residual being random).
+
+This `lm` is `PO4 = 1.293*oPO4 + 42.897`
+
+```{r}
+algae$PO4
+```
+
+PO4 for observation 28 can the be filled with predicted value using the model
+
+```{r}
+algae <- algae %>%
+  mutate(PO4 = ifelse(row_number()== 28, 42.897 + 1.293* oPO4, PO4))
+```
+
+```{r}
+res = resid(m)
+oPO4_reduced <- algae %>% 
+  filter(row_number() != 28) %>%
+  pull(oPO4)
+```
+
+```{r}
+ggplot(data = data.frame(oPO4 = m$model$oPO4, res= res), aes(x =oPO4, y= res)) +
+  geom_point() +
+  geom_hline(yintercept = 0, linetype = "dashed", color="red")+
+  labs(
+    x= "oPO4",
+    y="residuals",
+    title="Residual Plot"
+  )
+```
+
+If there are more PO4 cells to fill, we can use `sapply()` to apply this transformation to a set of values
+
+Create a simple function `fillPO4`:
+
+Create a simple function `fillPO4` :
+
+```{r}
+fillPO4 <- function(x) {
+  if_else(is.na(x), 42.897 + 1.293 *x, x)
+}
+# If x is not NA, return 42.897+1.293*x
+```
+
+```{r}
+algae[is.na(algae$PO4),"PO4"] <- sapply(algae[is.na(algae$PO4), "oPO4"],fillPO4)
+```
+
+Apply calls `fillPO4` function repeatedly, each time using one value in `algae[is.na(algae$PO4), "oPO4"]` as an argument.
+
+## Filling unknowns by exploring similarities among cases
+
+```{r}
+data(algae, package="DMwR2")
+algae <- algae[-manyNAs(algae),]
+```
+
+`DM2R2` provides a method call `knnImputation()`. This method use the Euclidean distance to find the ten most similar cases of any water sample with some unknown value in a variable, and then use their values to fill in the unknown.
+
+```{r}
+algae <- knnImputation(algae, k = 10) #use the weighted average of k most similar samples
+
+
+data(algae, package="DMwR2") #get data again so there are unknown values
+algae <- algae[-manyNAs(algae), ] 
+algae <- knnImputation(algae, k = 10, meth="median") #use the median of k most similar samples
+```
+
+Seeing what is in `knnImputation()`
+
+```{r}
+getAnywhere(knnImputation())
+```
+
+## Scaling and normalization
+
+Normalize values `x` : y= (x-mean) / standard deviation(x) using `scale()`
+
+```{r}
+library(dplyr)
+library(palmerpenguins)
+```
+
+```{r}
+data(penguins)
+```
+
+```{r}
+# select only numeric columns
+penguins_numeric <- select(penguins, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g)
+
+# normalize numeric columns
+penguins_norm <- scale(penguins_numeric)
+
+# convert back to data frame and add species column
+peng.norm <- cbind(as.data.frame(penguins_norm), species = penguins$species)
+
+# because scale() takes numeric matrix as input, we first remove Species column, then use cbind() to add the column back after normalization.
+```
+
+```{r}
+summary(penguins)
+```
+
+```{r}
+summary(peng.norm)
+```
+
+`scale()` can also take an argument for center and an argument of scale to normalize data in some other ways, for example, y=(x - min)/(max - min)
+
+```{r}
+max <- apply(select(penguins, -species), 2, max, na.rm=TRUE)
+min <- apply(select(penguins, -species), 2, min, na.rm=TRUE)
+```
+
+```{r}
+max
+```
+
+```{r}
+min
+```
+
+```{r}
+# min-max normalization
+penguin_scaled <- as.data.frame(lapply(penguins_numeric, function(x) (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))))
+
+penguin_scaled <- cbind(penguins_norm, species = penguins$species)
+
+summary(penguin_scaled)
+```
+
+## Discretizing variables (binning)
+
+The process of transferring continuous functions, models, variables and equations into discrete counterparts.
+
+Use `dlookr` 's `binning(type = "equal")` for equal-length cuts (bins)
+
+Use `Hmisc`'s `cut2()` for equal-depth cuts
+
+Boston Housing data as example:
+
+```{r}
+data(Boston, package="MASS")
+summary(Boston$age)
+```
+
+```{r}
+Boston$newAge <- dlookr::binning(Boston$age, 5, type="equal") # create 5 bins and add new column newAge to Boston 
+summary(Boston$newAge)
+```
+
+```{r}
+Boston$newAge <- dlookr::binning(Boston$age, nbins =5, labels= c("very-young","young","mid","older","very-old"), type= "equal") # add labels 
+
+summary(Boston$newAge)
+```
+
+## Equal-depth
+
+```{r}
+if(!require(Hmisc))
+  install.packages(Hmisc)
+Boston$newAge <- cut2(Boston$age, g= 5) # create 5 equal-depth bins and add new column newAge to Bostont
+table(Boston$newAge)
+```
+
+## Assign labels
+
+```{r}
+Boston$newAge <- factor(cut2(Boston$age, g=5),labels= c("very-young", "young", "mid","older", "very-old"))
+
+table(Boston$newAge)
+```
+
+Plot an equal-width histogram of width 10:
+
+```{r}
+hist(Boston$age, breaks = seq(0,101,by=10)) # seq() gives the function for breaks. the age ranges from 0 - 101
+```
+
+or, use `gglpot2!`
+
+```{r}
+library(ggplot2)
+
+Boston |>
+  ggplot(aes(x=age)) +
+  geom_histogram(binwidth = 10)
+```
+
+`dlookr` has binning functions
+
+## Decimal scaling
+
+```{r}
+data <- c(10,20,30,50,100)
+```
+
+```{r}
+(nDigits = nchar(max(abs(data)))) #nchar counts the number of characters 
+```
+
+```{r}
+(decimalScale = data/ (10^nDigits))
+```
+
+## Smoothing by bin mean
+
+```{r}
+age = c(13,15,16,16,19,20,21,22,25,25,25,30)
+
+# Seperate data into bins of depth 3
+(bins = matrix(age,nrow= length(age)/5,byrow = TRUE))
+```
+
+Find the average of each bins:
+
+```{r}
+(bin_means= apply(bins,1,FUN=mean))
+```
+
+```{r}
+for (i in 1:nrow(bins)) {
+  bins[i,] = bin_means[i]
+}
+bins 
+```
+
+```{r}
+(age_bin_mea_smoothed = round(as.vector(t(bins)),2))
+```
+
+## Variable correlations and dimensionality reduction
+
+## Chi-squared test
+
+HO: (Prisoner's race)(Victim's race) are independant
+
+data (contigency table):
+
+```{r}
+racetable = rbind(c(151,9), c(63,103))
+test1 = chisq.test(racetable, correct=F)
+test1
+```
+
+p-value is less than 0.05: chance to get X-squared value of 115.01 assuming HO is true is very slim (close to 0), so reject HO.
+
+## Loglinear model
+
+Extending chi-squared to more than 2 categorical variables
+
+Loglinear models medel cell counts in contingency tables.
+
+Using a multi dimensional array to hold the data to analyze cells in contingency table.
+
+```{r}
+seniors <- array(data = c(911, 44, 538, 456, 3, 2, 43, 279, 911, 44, 538, 456, 3, 2, 43, 279), 
+                  dim = c(2, 2, 2, 2),
+                 dimnames=list("cigarette" = c("yes", "no"),
+                                  "marijuana" = c("yes", "no"),
+                                  "alcohol" = c("yes", "no"), 
+                                  "age" =c("younger", "older")))
+```
+
+Observe how data is saved in the 2x2x2x2 array:
+
+```{r}
+seniors
+```
+
+Doing loglinear modeling using the glm function (generalized linear models).
+
+We need to convert the array to a table then to a data frame.
+
+Calling `as.data.frame` on a table object in R returns a data frame with a column for cell frequencies
+
+where each row represents a unique combination of variables.
+
+```{r}
+seniors.tb <- as.table(seniors)
+seniors.tb
+```
+
+```{r}
+seniors.df <- as.data.frame(seniors.tb)
+seniors.df
+```
+
+Next, we model Freq (this is the count in the contingency table) as a function of the three variables using the glm function. Set `family = poisson` because we are assuming independent counts. 
+
+Use `*` to connect all variables to get a saturated model, which will fit the data perfectly. Then we will remove effects that are not significant.
+
+```{r}
+mod.S4 <- glm(Freq ~(cigarette* marijuana*alcohol*age),data = seniors.df, family= poisson)
+summary(mod.S4)
+```
+
+Then look at "Coefficients" (these are the lamdas). Many of them are not significant (\*, \*\*, \*\*\* indicates significant lamdas)
+
+By examining those insignificant effects, we see they all involve `age`.
+
+Now lets' remove age and re-generate a model with the remaining three variables.
+
+```{r}
+mod.S3 <- glm(Freq ~ (cigarette * marijuana * alcohol),data = seniors.df,family= poisson)
+summary(mod.S3)
+```
+
+For data modeling, we can remove the 3-way interaction by testing "`Freq ~ (cigarette + marijuana + alcohol)^2`" (`^2` tells glm to check only two way interactions).
+
+```{r}
+mod.3 <- glm(Freq ~ (cigarette + marijuana + alcohol)^2, data = seniors.df, family = poisson)
+summary(mod.3)
+```
+
+Now comparing the fitted and observed values and see how well they match up:
+
+```{r}
+cbind(mod.3$data, fitted(mod.3))
+```
+
+It is fitting good,
+
+## Correlations
+
+```{r}
+library (tidyr) # data manipulation
+
+penguins_numeric |>
+  drop_na() |>
+  correlate()
+```
+
+`bill_length_mm` and `flipper_length_mm` are highly negatively correlated, `body_mass_g` and `flipper_length_mm` are strongly positively correlated as well.
+
+## Principal components analysis (PCA)
+
+```{r}
+pca.data <- penguins |>
+  drop_na() |>
+  select(-species, -island, -sex)
+
+pca <- princomp(pca.data)
+loadings(pca)
+```
+
+```{r}
+head(pca$scores) #pca result is a list, and the component scores are elements in the list 
+```
+
+```{r}
+
+```
