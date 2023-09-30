@@ -7,7 +7,7 @@ editor: visual
 
 # Data Preprocessing in R
 
-# **Goal**
+# Goal
 
 Practice basic R commands/methods for descriptive data analysis.
 
@@ -793,6 +793,263 @@ loadings(pca)
 head(pca$scores) #pca result is a list, and the component scores are elements in the list 
 ```
 
-```{r}
+Component scores are computed based on the loading, for example:
 
+``` comp3 = 0.941* bill_length_mm + 0.144 * ``bill_depth_mm`` - 0.309 * filpper_length_mm ```
+
+```{r}
+penguins_na <- penguins |>
+  drop_na()
+
+peng.reduced <- data.frame(pca$scores[,1:3], Species = penguins_na$species)
+head(peng.reduced)
+```
+
+Use `peng.reduced` data frame for subsequent analyses:
+
+Haar Discrete Wavelet Transform:
+
+```{r}
+if(!require(wavelets))
+  install.packages("wavelets")
+library(wavelets)
+```
+
+```{r}
+x<- c(2,2,0,2,3,5,4,4)
+wt <- dwt(x, filter='haar', n.levels= 3) # with 8-element vector, 3 level is the max
+wt
+```
+
+In default Haar, the default coefficients are sqrt(2)/2:
+
+Reconstruction the values made with average and differences/2:
+
+```{r}
+idwt(wt)
+```
+
+Obtain transform results as shown in class, use a different filter:
+
+```{r}
+xt = dwt(x, filter= wt.filter(c(0.5,-0.5)), n.levels = 3)
+xt
+```
+
+Reconstructing the original:
+
+```{r}
+idwt(xt)
+```
+
+## Sampling
+
+```{r}
+set.seed(7)
+age <- c(25,25,25,30,40,50,60,70,72)
+```
+
+## Simple random sampling, with replacement 
+
+```{r}
+sample(age,5)
+```
+
+```{r}
+sample(age,5,replace= TRUE)
+```
+
+## Stratified Sampling
+
+```{r}
+library(dplyr)
+set.seed(7) # make results the same each run
+summary(algae)
+
+```
+
+```{r}
+sample <- algae |> group_by(season) |> sample_frac(0.25)
+summary(sample)
+```
+
+## Cluster sampling
+
+```{r}
+if(!require(sampling))
+  install.packages("sampling")
+library(sampling)
+
+age <- sample(10:70,30) |>
+  c()
+
+age
+```
+
+#### Cluster on age to form 3 clusters 
+
+```{r}
+s<- kmeans(age,3)
+s$cluster
+```
+
+```{r}
+ageframe <- data.frame(age)
+ageframe$condition <- s$cluster # add cluster label as condition
+cluster (ageframe, clustername= "condition", size =2) # Select 2 out of 3 clusters
+```
+
+## Handling Text Datasets
+
+```{r}
+pacman ::p_load(tm, SnowballC) # tm uses SnowballC for stemming
+
+# read corpus
+# Emails.csv, holding some of hillary's emails 
+data <- read.csv(here::here("data","Emails.csv"),stringsAsFactors= FALSE)
+docs <- Corpus(VectorSource(data$RawText))
+mode(docs)
+```
+
+## Inspect a Document
+
+```{r}
+docs[[10]]
+```
+
+## Preprocessing Text
+
+```{r}
+docs <- docs |>
+  tm_map(removePunctuation) |> # removing punctuation
+  tm_map(content_transformer(tolower)) |> # to lower case
+  tm_map(removeNumbers) |>
+  tm_map(removeWords, stopwords("en")) |> # stopwords, such as  a, an
+  tm_map(stripWhitespace) |>
+  tm_map(stemDocument) # ex: Doing -> do 
+```
+
+```{r}
+content(docs[[10]]) # stemming reduces a word to its root, where root is smeantics of the word. Note: stemming is not perfect.
+```
+
+Convert Text to a matrix using TF\*IDF scores (see TF\*IDF scores in hans's text):
+
+```{r}
+DTData <- DocumentTermMatrix(docs, control = list(weighting = weightTfIdf))
+```
+
+```{r}
+DTData
+```
+
+```{r}
+inspect(DTData[1:2, 1:5])
+```
+
+Create term-document matrix (also called inverted index, see Han's text in a later chapter):
+
+```{r}
+TDData <- TermDocumentMatrix(docs, control= list (weighting= weightTfIdf))
+```
+
+```{r}
+inspect(TDData[1:2, 1:5])
+```
+
+## Explore the dataset 
+
+```{r}
+findFreqTerms(TDData, lowfreq = 75, highfreq= 1000)
+
+```
+
+Find the correlations among terms:
+
+```{r}
+findAssocs(TDData, terms="bill", corlimit= 0.25)
+```
+
+```{r}
+findAssocs(DTData, terms= c("bill"), corlimit= 0.25)
+```
+
+```{r}
+findAssocs(DTData, terms= c("schedul"), corlimit= 0.3)
+```
+
+## Create a word cloud
+
+```{r}
+if(!require(wordcloud))
+install.packages("wordcloud")
+if(!require(RColorBrewer))
+install.packages("RColorBrewer")
+library(wordcloud)
+```
+
+Loading required package: RColorBrewer
+
+```{r}
+data <- as.matrix(TDData)
+freq <- sort(rowSums(data), decreasin = TRUE)
+base <- data.frame(word = names(freq), freq = freq)
+```
+
+`png()` opens a new device "png' to output the graph to a local file:
+
+```{r}
+png(file = "wordCloud.png", width = 1000, height= 700, bg= "grey50")
+
+wordcloud(base$word, base$freq, col = terrain.colors(length(base$word), alpha = 0.9), random.order = FALSE, rot.per= 0.3, scale = c(1,1))
+```
+
+`dev.off()` closed the `.png` file `dev.list()` to see the current active graphics device, `dev.off()` to close devices that's not needed.
+
+Output the graph to the default display in Rstudio
+
+```{r}
+wordcloud(base$word, base$freq, col = terrain.colors(length(base$word),
+                                                     alpha = 0.9),
+          random.order = FALSE, rot.per= 0.3, scale = c(1,.1))
+```
+
+Removing `hrodclintonemail.com` from the word cloud:
+
+```{r}
+#allWords = data
+
+#wordsToAvoid = read.csv("wordsToDrop.csv")
+
+#finalWords = anti_join(allWords, wordsToAvoid, by = "Words") 
+```
+
+Sometimes you need to one-hot encoding a section of a dataframe. You can do it by using onehot package.
+
+```{r}
+if(!require(onehot))
+install.packages("onehot")
+library(onehot)
+d <- data.frame(language=c("javascript", "python", "java"), hours=c(10, 3, 5) )
+d$language <- as.factor(d$language) #convert the column to be encoded to Factor
+encoded <- onehot(d)
+new_d <- predict(encoded, d)
+new_d
+```
+
+One hot encoding for data frame with multi - value cells `(language = "javascript, python")`
+
+```{r}
+if(!require(qdapTools))
+  install.packages("qdapTools")
+library(qdapTools)
+d <- data.frame(language = c("javascript, python", "java"), hours = c(3,5))
+d
+```
+
+```{r}
+dlist <- as.list(d)
+new_d <- data.frame(cbind(dlist,mtabulate(strsplit(as.character(dlist$language),", "))))
+
+new_d
 ```
